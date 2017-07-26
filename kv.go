@@ -117,6 +117,14 @@ func decodeHook(fromType reflect.Type, toType reflect.Type, data interface{}) (i
 		}
 		return object, nil
 	}
+	if reflect.PtrTo(toType).Implements(textUnmarshalerType) {
+		object := reflect.New(toType).Interface()
+		err := object.(encoding.TextUnmarshaler).UnmarshalText([]byte(data.(string)))
+		if err != nil {
+			return nil, fmt.Errorf("Error unmarshaling %v: %v", data, err)
+		}
+		return reflect.ValueOf(object).Elem().Interface(), nil
+	}
 	switch toType.Kind() {
 	case reflect.Ptr:
 		if fromType.Kind() == reflect.String {
@@ -202,6 +210,19 @@ func collateKvRecursive(objValue reflect.Value, kv map[string]string, key string
 		}
 		kv[name] = string(test)
 		return nil
+	}
+	textMarshalerType := reflect.TypeOf((*encoding.TextMarshaler)(nil)).Elem()
+	if reflect.PtrTo(objValue.Type()).Implements(textMarshalerType) {
+		objValuePtr := reflect.New(objValue.Type())
+		objValuePtr.Elem().Set(objValue)
+		if marshaler, ok := objValuePtr.Interface().(encoding.TextMarshaler); ok {
+			test, err := marshaler.MarshalText()
+			if err != nil {
+				return fmt.Errorf("Error marshaling key %s: %v", name, err)
+			}
+			kv[name] = string(test)
+			return nil
+		}
 	}
 	switch kind {
 	case reflect.Struct:
